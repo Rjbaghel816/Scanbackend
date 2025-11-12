@@ -1,11 +1,12 @@
-import Student from '../models/Student.js';
+import { getStudentModel } from '../models/Student.js';
 
 /**
- * Process Excel data and create students in database
+ * Process Excel data and create students in database with class name
  * @param {Array} excelData - Array of rows from Excel file
+ * @param {String} className - Class name for this batch
  * @returns {Object} Result with created count and errors
  */
-export const processExcelUpload = async (excelData) => {
+export const processExcelUpload = async (excelData, className = 'default') => {
   try {
     const processedData = [];
     const errors = [];
@@ -53,7 +54,8 @@ export const processExcelUpload = async (excelData) => {
       processedData.push({
         rollNumber,
         subjectCode,
-        subjectName
+        subjectName,
+        className // ✅ ADD CLASS NAME
       });
     }
 
@@ -61,8 +63,12 @@ export const processExcelUpload = async (excelData) => {
       throw new Error('No valid student data found in Excel file');
     }
 
+    // ✅ GET DYNAMIC MODEL FOR THIS CLASS
+    const Student = getStudentModel(className);
+
     // Check for existing students in database to avoid duplicates
     const existingStudents = await Student.find({
+      className: className, // ✅ FILTER BY CLASS
       $or: processedData.map(item => ({
         rollNumber: item.rollNumber,
         subjectCode: item.subjectCode
@@ -87,7 +93,8 @@ export const processExcelUpload = async (excelData) => {
         skipped: processedData.length,
         duplicates: processedData.length,
         errors: errors,
-        message: 'All students already exist in database'
+        className: className,
+        message: 'All students already exist in database for this class'
       };
     }
 
@@ -97,9 +104,10 @@ export const processExcelUpload = async (excelData) => {
         rollNumber: item.rollNumber,
         subjectCode: item.subjectCode,
         subjectName: item.subjectName,
+        className: item.className, // ✅ INCLUDE CLASS NAME
         status: 'Pending'
       })),
-      { ordered: false } // Continue even if some inserts fail
+      { ordered: false }
     );
 
     return {
@@ -107,14 +115,14 @@ export const processExcelUpload = async (excelData) => {
       skipped: processedData.length - studentsToCreate.length,
       duplicates: existingStudents.length,
       errors: errors,
-      message: `Successfully created ${createdStudents.length} new students`
+      className: className,
+      message: `Successfully created ${createdStudents.length} new students for class ${className}`
     };
 
   } catch (error) {
     console.error('Excel processing error:', error);
     
     if (error.name === 'BulkWriteError' && error.writeErrors) {
-      // Handle MongoDB duplicate key errors gracefully
       const duplicateCount = error.writeErrors.length;
       const successCount = error.result?.nInserted || 0;
       
@@ -123,6 +131,7 @@ export const processExcelUpload = async (excelData) => {
         skipped: duplicateCount,
         duplicates: duplicateCount,
         errors: ['Some students already exist in database'],
+        className: className,
         message: `Created ${successCount} students, ${duplicateCount} already existed`
       };
     }

@@ -8,7 +8,9 @@ import {
   generatePDF,
   getStats,
   deleteStudent,
-  deleteAllStudents
+  deleteAllStudents,
+  getClasses, // ✅ NEW: Import getClasses
+  updateStudentRemark // ✅ NEW: Import updateStudentRemark
 } from '../controllers/studentController.js';
 
 const router = express.Router();
@@ -34,11 +36,15 @@ const upload = multer({
   }
 });
 
+// ✅ NEW ROUTE: Get all available classes
+router.get('/classes', getClasses);
+
 // Routes
 router.get('/', getStudents);
 router.get('/stats/summary', getStats);
 router.get('/:id', getStudent);
 router.patch('/:id/status', updateStatus);
+router.patch('/:id/remark', updateStudentRemark); // ✅ NEW: Remark update route
 
 // ✅ FIXED: Add upload.single('file') middleware for Excel upload
 router.post('/upload-excel', upload.single('file'), uploadExcel);

@@ -1,4 +1,4 @@
-import Student from '../models/Student.js';
+import { getStudentModel } from '../models/Student.js';
 import { generateAndSavePDF } from '../services/pdfService.js';
 import path from 'path';
 import fs from 'fs/promises';
@@ -73,6 +73,9 @@ export const uploadScans = async (req, res, next) => {
   
   try {
     const { studentId } = req.params;
+    const { className = 'default' } = req.body; // ✅ GET CLASS NAME
+    
+    const Student = getStudentModel(className); // ✅ USE DYNAMIC MODEL
     const files = req.files;
 
     if (!files || files.length === 0) {
@@ -97,14 +100,14 @@ export const uploadScans = async (req, res, next) => {
       });
     }
 
-    if (student.status === 'Absent') {
+    if (student.status === 'Absent' || student.status === 'Missing') {
       return res.status(400).json({ 
         success: false, 
-        message: 'Cannot scan copies for absent students' 
+        message: 'Cannot scan copies for absent/missing students' 
       });
     }
 
-    console.log(`📸 Processing ${files.length} images for ${student.rollNumber}`);
+    console.log(`📸 Processing ${files.length} images for ${student.rollNumber} in class ${className}`);
 
     try {
       // ✅ STEP 1: Parallel image compression
@@ -157,7 +160,7 @@ export const uploadScans = async (req, res, next) => {
           filename: path.basename(pdfResult.pdfPath),
           pageCount: pdfResult.pageCount,
           fileSize: pdfResult.fileSize,
-          downloadUrl: `/api/upload/pdf/${studentId}`
+          downloadUrl: `/api/upload/pdf/${studentId}?className=${className}`
         }
       });
 
@@ -190,6 +193,8 @@ export const uploadScans = async (req, res, next) => {
 export const deleteScans = async (req, res, next) => {
   try {
     const { studentId } = req.params;
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
     
     const student = await Student.findById(studentId);
     if (!student) {
@@ -238,6 +243,8 @@ export const deleteScans = async (req, res, next) => {
 export const downloadPDF = async (req, res, next) => {
   try {
     const { studentId } = req.params;
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
     
     const student = await Student.findById(studentId);
     if (!student) {
@@ -294,6 +301,8 @@ export const downloadPDF = async (req, res, next) => {
 export const getPDFInfo = async (req, res, next) => {
   try {
     const { studentId } = req.params;
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
     
     const student = await Student.findById(studentId);
     if (!student) {
@@ -327,7 +336,7 @@ export const getPDFInfo = async (req, res, next) => {
         fileSize: fileStats?.size || 0,
         generatedAt: student.pdfGeneratedAt,
         pageCount: student.scannedPages?.length || 0,
-        downloadUrl: `/api/upload/pdf/${studentId}`,
+        downloadUrl: `/api/upload/pdf/${studentId}?className=${className}`,
         exists: !!fileStats
       }
     });
@@ -343,6 +352,8 @@ export const getPDFInfo = async (req, res, next) => {
 export const rescanStudent = async (req, res, next) => {
   try {
     const { studentId } = req.params;
+    const { className = 'default' } = req.body; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
     
     const student = await Student.findById(studentId);
     if (!student) {
@@ -390,7 +401,8 @@ export const rescanStudent = async (req, res, next) => {
 // @access  Public
 export const batchDeleteScans = async (req, res, next) => {
   try {
-    const { studentIds } = req.body;
+    const { studentIds, className = 'default' } = req.body; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
     
     if (!studentIds || !Array.isArray(studentIds)) {
       return res.status(400).json({ 

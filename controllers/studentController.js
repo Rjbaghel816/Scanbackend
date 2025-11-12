@@ -1,6 +1,20 @@
-import Student from '../models/Student.js';
+import { getStudentModel, getAllClasses } from '../models/Student.js';
 import { processExcelUpload } from '../services/excelService.js';
-import xlsx from 'xlsx'; // ✅ IMPORT ADDED
+import xlsx from 'xlsx';
+
+// ✅ NEW: Get all available classes
+export const getClasses = async (req, res, next) => {
+  try {
+    const classes = await getAllClasses();
+    
+    res.json({
+      success: true,
+      classes: classes
+    });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // @desc    Get all students with pagination and filters
 // @route   GET /api/students
@@ -13,14 +27,18 @@ export const getStudents = async (req, res, next) => {
       search = '',
       status = '',
       sortBy = 'rollNumber',
-      sortOrder = 'asc'
+      sortOrder = 'asc',
+      className = 'default' // ✅ ADDED: Class parameter
     } = req.query;
 
+    // ✅ GET DYNAMIC MODEL FOR CLASS
+    const Student = getStudentModel(className);
+    
     const skip = (page - 1) * limit;
     const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
 
-    // Build filter
-    let filter = {};
+    // Build filter with class
+    let filter = { className }; // ✅ ADDED: Filter by class
     
     if (search) {
       filter.$or = [
@@ -45,6 +63,7 @@ export const getStudents = async (req, res, next) => {
 
     res.json({
       success: true,
+      className, // ✅ RETURN CLASS NAME
       students: students.map(student => ({
         ...student,
         pagesCount: student.scannedPages ? student.scannedPages.length : 0
@@ -67,6 +86,9 @@ export const getStudents = async (req, res, next) => {
 // @access  Public
 export const getStudent = async (req, res, next) => {
   try {
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
+    
     const student = await Student.findById(req.params.id);
     
     if (!student) {
@@ -91,12 +113,10 @@ export const getStudent = async (req, res, next) => {
 // @desc    Update student status
 // @route   PATCH /api/students/:id/status
 // @access  Public
-// @desc    Update student status
-// @route   PATCH /api/students/:id/status
-// @access  Public
 export const updateStatus = async (req, res, next) => {
   try {
-    const { status, remark } = req.body;
+    const { status, remark, className = 'default' } = req.body; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
 
     // ✅ Added "Missing" in allowed statuses
     const validStatuses = ['Pending', 'Present', 'Absent', 'Missing'];
@@ -143,12 +163,13 @@ export const updateStatus = async (req, res, next) => {
   }
 };
 
-
 // @desc    Upload Excel and create students
 // @route   POST /api/students/upload-excel
 // @access  Public
 export const uploadExcel = async (req, res, next) => {
   try {
+    const { className = 'default_class' } = req.body; // ✅ GET CLASS NAME FROM FRONTEND
+    
     // ✅ FIXED: Check for file instead of excelData in body
     if (!req.file) {
       return res.status(400).json({ 
@@ -159,7 +180,7 @@ export const uploadExcel = async (req, res, next) => {
 
     console.log('📁 Uploaded file details:', {
       filename: req.file.originalname,
-      mimetype: req.file.mimetype,
+      className: className,
       size: req.file.size,
       bufferLength: req.file.buffer?.length
     });
@@ -212,16 +233,16 @@ export const uploadExcel = async (req, res, next) => {
       });
     }
 
-    console.log(`🔄 Processing ${excelData.length} rows from Excel...`);
+    console.log(`🔄 Processing ${excelData.length} rows for class: ${className}`);
     
-    // Process the Excel data
-    const result = await processExcelUpload(excelData);
+    // ✅ PROCESS EXCEL WITH CLASS NAME
+    const result = await processExcelUpload(excelData, className);
     
     console.log('✅ Excel processing completed:', result);
     
     res.json({
       success: true,
-      message: `Excel file processed successfully!`,
+      message: `Excel file processed successfully for class ${className}!`,
       ...result
     });
 
@@ -239,6 +260,9 @@ export const uploadExcel = async (req, res, next) => {
 // @access  Public
 export const generatePDF = async (req, res, next) => {
   try {
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
+    
     const student = await Student.findById(req.params.id);
     
     if (!student) {
@@ -287,16 +311,20 @@ export const generatePDF = async (req, res, next) => {
 // @access  Public
 export const getStats = async (req, res, next) => {
   try {
-    // Simple stats calculation
-    const total = await Student.countDocuments();
-    const scanned = await Student.countDocuments({ isScanned: true });
-    const absent = await Student.countDocuments({ status: 'Absent' });
-    const pdfGenerated = await Student.countDocuments({ pdfPath: { $ne: null } });
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
+    
+    // Simple stats calculation with class filter
+    const total = await Student.countDocuments({ className });
+    const scanned = await Student.countDocuments({ className, isScanned: true });
+    const absent = await Student.countDocuments({ className, status: 'Absent' });
+    const pdfGenerated = await Student.countDocuments({ className, pdfPath: { $ne: null } });
     
     const remaining = total - scanned - absent;
 
     res.json({
       success: true,
+      className, // ✅ RETURN CLASS NAME
       stats: {
         total: total,
         scanned: scanned,
@@ -315,6 +343,9 @@ export const getStats = async (req, res, next) => {
 // @access  Public
 export const deleteStudent = async (req, res, next) => {
   try {
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
+    
     const student = await Student.findById(req.params.id);
     
     if (!student) {
@@ -353,10 +384,13 @@ export const deleteStudent = async (req, res, next) => {
 // @access  Public
 export const deleteAllStudents = async (req, res, next) => {
   try {
+    const { className = 'default' } = req.query; // ✅ ADDED: Class parameter
+    const Student = getStudentModel(className);
+    
     // Delete all PDF files first
     const fs = await import('fs');
     
-    const students = await Student.find({ pdfPath: { $ne: null } });
+    const students = await Student.find({ className, pdfPath: { $ne: null } });
     
     for (const student of students) {
       if (student.pdfPath && fs.existsSync(student.pdfPath)) {
@@ -368,12 +402,41 @@ export const deleteAllStudents = async (req, res, next) => {
       }
     }
 
-    // Delete all students from database
-    const result = await Student.deleteMany({});
+    // Delete all students from database for this class
+    const result = await Student.deleteMany({ className });
     
     res.json({
       success: true,
-      message: `Deleted ${result.deletedCount} students and their PDF files`
+      message: `Deleted ${result.deletedCount} students and their PDF files from class ${className}`
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ✅ NEW: Update student remark
+export const updateStudentRemark = async (req, res, next) => {
+  try {
+    const { remark, className = 'default' } = req.body;
+    const Student = getStudentModel(className);
+
+    const student = await Student.findByIdAndUpdate(
+      req.params.id,
+      { remark },
+      { new: true, runValidators: true }
+    );
+
+    if (!student) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Student not found' 
+      });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Remark updated successfully',
+      student 
     });
   } catch (error) {
     next(error);

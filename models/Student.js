@@ -29,11 +29,10 @@ const studentSchema = new mongoose.Schema({
     trim: true 
   },
   status: { 
-  type: String, 
-  enum: ['Pending', 'Present', 'Absent', 'Missing'],  // ✅ Added "Missing"
-  default: 'Pending' 
-},
-
+    type: String, 
+    enum: ['Pending', 'Present', 'Absent', 'Missing'],
+    default: 'Pending' 
+  },
   remark: { 
     type: String, 
     default: '' 
@@ -46,7 +45,6 @@ const studentSchema = new mongoose.Schema({
   scanTime: { 
     type: Date 
   },
-  // PDF file reference
   pdfPath: {
     type: String,
     default: null
@@ -54,14 +52,20 @@ const studentSchema = new mongoose.Schema({
   pdfGeneratedAt: {
     type: Date,
     default: null
+  },
+  className: {
+    type: String,
+    required: true,
+    index: true
   }
 }, {
   timestamps: true
 });
 
 // Indexes
-studentSchema.index({ rollNumber: 1, subjectCode: 1 });
-studentSchema.index({ status: 1, isScanned: 1 });
+studentSchema.index({ className: 1, rollNumber: 1 });
+studentSchema.index({ className: 1, status: 1 });
+studentSchema.index({ className: 1, isScanned: 1 });
 
 // Virtual for pages count
 studentSchema.virtual('pagesCount').get(function() {
@@ -70,7 +74,6 @@ studentSchema.virtual('pagesCount').get(function() {
 
 // Update isScanned based on scannedPages
 studentSchema.pre('save', function(next) {
-  // Auto-update isScanned based on scannedPages
   if (this.scannedPages && this.scannedPages.length > 0) {
     this.isScanned = true;
     if (!this.scanTime) {
@@ -82,8 +85,57 @@ studentSchema.pre('save', function(next) {
     this.pdfPath = null;
     this.pdfGeneratedAt = null;
   }
-  
   next();
 });
+
+// ✅ FIXED: DYNAMIC MODEL CREATION with proper className handling
+const studentModels = new Map();
+
+export const getStudentModel = (className) => {
+  // ✅ FIX: Ensure className is always a string
+  let normalizedClassName;
+  if (Array.isArray(className)) {
+    normalizedClassName = className[0]; // Take first element if it's an array
+  } else {
+    normalizedClassName = className;
+  }
+  
+  normalizedClassName = normalizedClassName.replace(/[^a-zA-Z0-9]/g, '_').toLowerCase();
+  
+  if (!studentModels.has(normalizedClassName)) {
+    const collectionName = `class_${normalizedClassName}`;
+    
+    const ClassStudentModel = mongoose.model(
+      `Student_${normalizedClassName}`, 
+      studentSchema, 
+      collectionName
+    );
+    
+    studentModels.set(normalizedClassName, ClassStudentModel);
+    console.log(`✅ Created new model for class: ${normalizedClassName}`);
+  }
+  
+  return studentModels.get(normalizedClassName);
+};
+
+// Get all available classes
+export const getAllClasses = async () => {
+  try {
+    const collections = await mongoose.connection.db.listCollections().toArray();
+    
+    const classCollections = collections
+      .filter(col => col.name.startsWith('class_'))
+      .map(col => ({
+        collectionName: col.name,
+        className: col.name.replace('class_', ''),
+        displayName: col.name.replace('class_', '').replace(/_/g, ' ')
+      }));
+
+    return classCollections;
+  } catch (error) {
+    console.error('Error fetching classes:', error);
+    return [];
+  }
+};
 
 export default mongoose.model('Student', studentSchema);

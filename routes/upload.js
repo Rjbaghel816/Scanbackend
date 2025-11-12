@@ -21,7 +21,7 @@ router.post('/scan/:studentId',
 // Delete scans and PDF
 router.delete('/scan/:studentId', deleteScans);
 
-// Download PDF
+// Download PDF with class support
 router.get('/pdf/:studentId', downloadPDF);
 
 // Get PDF info without downloading
