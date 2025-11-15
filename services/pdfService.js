@@ -408,35 +408,24 @@ const processImagePipeline = async (imageBuffer, isFirstPage = false) => {
 
 // ✅ FIXED PDF GENERATION WITH CORRECT PATH
 // ✅ CORRECTED PDF GENERATION WITH GUARANTEED SAVE LOCATION
+// ✅ SIMPLIFIED PDF GENERATION - COMPRESSION ALWAYS APPLIED
 export const generateAndSavePDF = async (student, imageBuffers) => {
   const startTime = Date.now();
-  
-  // ✅ FIXED: Define the path directly and absolutely
   const pdfsPath = 'C:/exam_scanner_uploads/pdfs';
   
   console.log(`\n🚀 PDF GENERATION STARTED`);
   console.log(`📌 Student: ${student.rollNumber}`);
   console.log(`📌 Images: ${imageBuffers.length}`);
-  console.log(`📁 WILL SAVE TO: ${pdfsPath}`); // This will now show the correct path
-  
+
   try {
-    // ✅ FIXED: Ensure directory exists with correct path
     await mkdir(pdfsPath, { recursive: true });
     console.log(`✅ Verified directory exists: ${pdfsPath}`);
     
     const pdfDoc = await PDFDocument.create();
     pdfDoc.setTitle(`Answer Sheet - ${student.rollNumber}`);
     pdfDoc.setAuthor('Auto PDF Generator');
-    pdfDoc.setCreator('PDF Generator');
 
     let allPages = [];
-    let splitStats = { 
-      original: 0, 
-      final: 0,
-      boundariesDetected: 0,
-      qualityEnhanced: 0,
-      pagesSplit: 0
-    };
     
     // ✅ PROCESS EACH IMAGE
     for (let i = 0; i < imageBuffers.length; i++) {
@@ -444,20 +433,8 @@ export const generateAndSavePDF = async (student, imageBuffers) => {
       
       const originalBuffer = imageBuffers[i];
       const isFirstPage = (i === 0);
-      
       const processedPages = await processImagePipeline(originalBuffer, isFirstPage);
-      
       allPages = allPages.concat(processedPages);
-      splitStats.original++;
-      splitStats.final += processedPages.length;
-      
-      if (processedPages.length > 1) {
-        splitStats.pagesSplit++;
-      }
-      if (processedPages.length > 0) {
-        splitStats.boundariesDetected++;
-        splitStats.qualityEnhanced++;
-      }
     }
 
     // ✅ ADD ALL PAGES TO PDF
@@ -468,58 +445,55 @@ export const generateAndSavePDF = async (student, imageBuffers) => {
 
     const pdfBytes = await pdfDoc.save();
     
-    // ✅ FIXED: Use the direct path (not from config)
-    const pdfFilename = `${student.rollNumber}_${Date.now()}.pdf`;
-    const pdfFilePath = path.join(pdfsPath, pdfFilename);
-    const compressedFilePath = path.join(pdfsPath, `${student.rollNumber}_${Date.now()}.pdf`);
+    // ✅ FIXED: TEMPORARY FILE WITH DIFFERENT NAME
+    const timestamp = Date.now();
+    const tempFilename = `temp_${student.rollNumber}_${timestamp}.pdf`;
+    const finalFilename = `${student.rollNumber}_${timestamp}.pdf`;
 
-    console.log(`💾 Attempting to save to: ${pdfFilePath}`);
-    
-    // Temporary file save karein
-    await fs.writeFile(pdfFilePath, pdfBytes);
-    console.log(`✅ Temporary PDF saved: ${pdfFilePath}`);
-    
-    // ✅ COMPRESSION APPLY KAREIN
-    await compressPDF(pdfFilePath, compressedFilePath);
-    console.log(`✅ Compressed PDF saved: ${compressedFilePath}`);
+    const tempFilePath = path.join(pdfsPath, tempFilename);
+    const finalFilePath = path.join(pdfsPath, finalFilename);
 
-    // Temporary file delete karein
+    // ✅ Step 1: Save temporary uncompressed PDF
+    console.log(`💾 Saving temporary PDF...`);
+    await fs.writeFile(tempFilePath, pdfBytes);
+    console.log(`✅ Temporary PDF saved: ${tempFilePath}`);
+    
+    // ✅ Step 2: ALWAYS COMPRESS AND REPLACE
+    console.log('🌀 Compressing PDF...');
     try {
-      await fs.unlink(pdfFilePath);
+      await compressPDF(tempFilePath, finalFilePath);
+      console.log(`✅ Compressed PDF saved: ${finalFilePath}`);
+      
+      // ✅ Step 3: DELETE TEMPORARY FILE
+      await fs.unlink(tempFilePath);
       console.log('✅ Temporary uncompressed file deleted');
-    } catch (delErr) {
-      console.log('⚠️ Could not delete uncompressed PDF');
+      
+    } catch (compressionError) {
+      // ❌ If compression fails, use temporary file as final
+      console.log('⚠️ Compression failed, using uncompressed PDF');
+      await fs.rename(tempFilePath, finalFilePath);
+      console.log(`✅ Using uncompressed PDF: ${finalFilePath}`);
     }
 
-    const stats = await fs.stat(compressedFilePath);
+    // ✅ Step 4: GET FINAL FILE STATS
+    const fileStats = await fs.stat(finalFilePath);
     const totalTime = Date.now() - startTime;
     
     // ✅ FINAL SUMMARY
     console.log(`\n🎉 PDF GENERATION SUCCESS!`);
-    console.log(`📊 SUMMARY:`);
-    console.log(`   ├── Original images: ${splitStats.original}`);
-    console.log(`   ├── Final PDF pages: ${splitStats.final}`);
-    console.log(`   ├── Pages split: ${splitStats.pagesSplit}`);
-    console.log(`   ├── Processing time: ${totalTime}ms`);
-    console.log(`   ├── File size: ${(stats.size / 1024 / 1024).toFixed(2)} MB`);
-    console.log(`   ├── Saved at: ${compressedFilePath}`);
-    console.log(`   ├── Quality: High ✅`);
-    console.log(`   ├── Compression: Applied ✅`);
-    console.log(`   └── Answers: Clear ✅`);
+    console.log(`📊 File size: ${(fileStats.size / 1024 / 1024).toFixed(2)} MB`);
+    console.log(`📊 Processing time: ${totalTime}ms`);
+    console.log(`📊 Pages: ${allPages.length}`);
+    console.log(`📁 Saved at: ${finalFilePath}`);
 
     return {
-      pdfPath: compressedFilePath,
-      pdfFilename: path.basename(compressedFilePath),
+      pdfPath: finalFilePath,
+      pdfFilename: finalFilename,
       pageCount: allPages.length,
-      fileSize: stats.size,
+      fileSize: fileStats.size,
       processingTime: totalTime,
       originalImages: imageBuffers.length,
-      finalPages: allPages.length,
-      firstPageNoSplit: true,
-      documentBoundariesDetected: true,
-      qualityEnhanced: true,
-      colorPreserved: true,
-      compressed: true
+      finalPages: allPages.length
     };
 
   } catch (error) {
@@ -527,6 +501,9 @@ export const generateAndSavePDF = async (student, imageBuffers) => {
     throw new Error(`PDF generation failed: ${error.message}`);
   }
 };
+
+// ✅ SIMPLIFIED COMPRESSION - NO SIZE CHECKS
+
 
 // ✅ ADD IMAGE TO PDF
 const addImageToPDF = async (pdfDoc, imageBuffer, student, pageNumber, totalPages) => {
