@@ -5,7 +5,8 @@ import {
   downloadPDF,
   getPDFInfo,
   rescanStudent,
-  batchDeleteScans
+  batchDeleteScans,
+  deletePDF
 } from '../controllers/uploadController.js';
 import { upload, handleMulterError } from '../middleware/uploadMiddleware.js';
 
@@ -26,6 +27,9 @@ router.get('/pdf/:studentId', downloadPDF);
 
 // Get PDF info without downloading
 router.get('/pdf/:studentId/info', getPDFInfo);
+
+// Delete PDF file and database entry
+router.delete('/pdf/:studentId', deletePDF);
 
 // Rescan student (delete old and allow new scan)
 router.post('/rescan/:studentId', rescanStudent);

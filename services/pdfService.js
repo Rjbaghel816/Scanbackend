@@ -469,9 +469,9 @@ export const generateAndSavePDF = async (student, imageBuffers) => {
     const pdfBytes = await pdfDoc.save();
     
     // ✅ FIXED: Use the direct path (not from config)
-    const pdfFilename = `AnswerSheet_${student.rollNumber}_${Date.now()}.pdf`;
+    const pdfFilename = `${student.rollNumber}_${Date.now()}.pdf`;
     const pdfFilePath = path.join(pdfsPath, pdfFilename);
-    const compressedFilePath = path.join(pdfsPath, `AnswerSheet_${student.rollNumber}_${Date.now()}_compressed.pdf`);
+    const compressedFilePath = path.join(pdfsPath, `${student.rollNumber}_${Date.now()}.pdf`);
 
     console.log(`💾 Attempting to save to: ${pdfFilePath}`);
     

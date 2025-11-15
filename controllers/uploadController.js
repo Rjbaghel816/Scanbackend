@@ -141,6 +141,7 @@ export const uploadScans = async (req, res, next) => {
       student.status = student.status === 'Pending' ? 'Present' : student.status;
       student.scanTime = new Date();
       student.pdfPath = pdfResult.pdfPath;
+      student.pdfName = pdfResult.pdfFilename; // ✅ Save PDF filename
       student.pdfGeneratedAt = new Date();
 
       await student.save();
@@ -157,6 +158,8 @@ export const uploadScans = async (req, res, next) => {
           pagesCount: student.scannedPages.length
         },
         pdfInfo: {
+          pdfName: student.pdfName,
+          pdfPath: student.pdfPath,
           filename: path.basename(pdfResult.pdfPath),
           pageCount: pdfResult.pageCount,
           fileSize: pdfResult.fileSize,
@@ -219,6 +222,7 @@ export const deleteScans = async (req, res, next) => {
     student.isScanned = false;
     student.scanTime = null;
     student.pdfPath = null;
+    student.pdfName = null;
     student.pdfGeneratedAt = null;
 
     await student.save();
@@ -331,7 +335,9 @@ export const getPDFInfo = async (req, res, next) => {
     res.json({
       success: true,
       pdfInfo: {
-        filename: `Copy_${student.rollNumber}_${student.subjectCode}.pdf`,
+        pdfName: student.pdfName || `Copy_${student.rollNumber}_${student.subjectCode}.pdf`,
+        pdfPath: student.pdfPath,
+        filename: student.pdfName || `Copy_${student.rollNumber}_${student.subjectCode}.pdf`,
         filePath: student.pdfPath,
         fileSize: fileStats?.size || 0,
         generatedAt: student.pdfGeneratedAt,
@@ -378,6 +384,7 @@ export const rescanStudent = async (req, res, next) => {
     student.isScanned = false;
     student.scanTime = null;
     student.pdfPath = null;
+    student.pdfName = null;
     student.pdfGeneratedAt = null;
 
     await student.save();
@@ -435,6 +442,7 @@ export const batchDeleteScans = async (req, res, next) => {
           student.isScanned = false;
           student.scanTime = null;
           student.pdfPath = null;
+          student.pdfName = null;
           student.pdfGeneratedAt = null;
 
           await student.save();
@@ -450,6 +458,74 @@ export const batchDeleteScans = async (req, res, next) => {
       success: true,
       message: `Batch delete completed: ${results.deleted} successful, ${results.failed} failed`,
       results
+    });
+
+  } catch (error) {
+    next(error);
+  }
+};
+
+// @desc    Delete PDF file from filesystem and MongoDB
+// @route   DELETE /api/upload/pdf/:studentId
+// @access  Public
+export const deletePDF = async (req, res, next) => {
+  try {
+    const { studentId } = req.params;
+    const { className = 'default' } = req.query;
+    const Student = getStudentModel(className);
+    
+    const student = await Student.findById(studentId);
+    if (!student) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Student not found' 
+      });
+    }
+
+    if (!student.pdfPath) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'No PDF found for this student' 
+      });
+    }
+
+    // Delete PDF file from filesystem
+    let fileDeleted = false;
+    if (await fileExists(student.pdfPath)) {
+      try {
+        await fs.unlink(student.pdfPath);
+        fileDeleted = true;
+        console.log(`✅ Deleted PDF file: ${student.pdfPath}`);
+      } catch (fsError) {
+        console.warn('Could not delete PDF file:', fsError);
+        return res.status(500).json({ 
+          success: false, 
+          message: `Failed to delete PDF file: ${fsError.message}` 
+        });
+      }
+    } else {
+      console.warn(`PDF file not found at path: ${student.pdfPath}`);
+    }
+
+    // Reset student record in MongoDB
+    student.status = 'Pending';
+    student.isScanned = false;
+    student.scannedPages = [];
+    student.scanTime = null;
+    student.pdfPath = null;
+    student.pdfName = null;
+    student.pdfGeneratedAt = null;
+    await student.save();
+
+    res.json({
+      success: true,
+      message: fileDeleted 
+        ? 'PDF file and database entry deleted successfully' 
+        : 'PDF database entry removed (file was already missing)',
+      student: {
+        ...student.toObject(),
+        pagesCount: 0
+      }
     });
 
   } catch (error) {

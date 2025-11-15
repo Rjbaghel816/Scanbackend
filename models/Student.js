@@ -49,6 +49,10 @@ const studentSchema = new mongoose.Schema({
     type: String,
     default: null
   },
+  pdfName: {
+    type: String,
+    default: null
+  },
   pdfGeneratedAt: {
     type: Date,
     default: null
@@ -83,6 +87,7 @@ studentSchema.pre('save', function(next) {
     this.isScanned = false;
     this.scanTime = null;
     this.pdfPath = null;
+    this.pdfName = null;
     this.pdfGeneratedAt = null;
   }
   next();

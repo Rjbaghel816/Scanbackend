@@ -137,6 +137,7 @@ export const updateStatus = async (req, res, next) => {
       updateData.isScanned = false;
       updateData.scanTime = null;
       updateData.pdfPath = null;
+      updateData.pdfName = null;
       updateData.pdfGeneratedAt = null;
     }
 
@@ -288,7 +289,8 @@ export const generatePDF = async (req, res, next) => {
       });
     }
 
-    const filename = `Copy_${student.rollNumber}_${student.subjectCode}.pdf`;
+    // ✅ Use pdfName if available, otherwise generate filename
+    const filename = student.pdfName || `Copy_${student.rollNumber}_${student.subjectCode}.pdf`;
     
     res.download(student.pdfPath, filename, (err) => {
       if (err) {
@@ -301,6 +303,9 @@ export const generatePDF = async (req, res, next) => {
         }
       }
     });
+    
+    // ✅ Return pdfName and pdfPath in response (for frontend)
+    // Note: This won't execute if download succeeds, but we'll add a separate endpoint for info
   } catch (error) {
     next(error);
   }
