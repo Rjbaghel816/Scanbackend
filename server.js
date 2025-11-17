@@ -31,9 +31,25 @@ app.use(
   })
 );
 
+// ✅ FINAL CORS FIX — (Allow localhost + Netlify)
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://scanapps.netlify.app",
+  process.env.FRONTEND_URL
+];
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "http://localhost:3000",
+    origin: function (origin, callback) {
+      if (!origin) return callback(null, true); // Postman, mobile apps, curl
+
+      if (allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        console.log("❌ CORS Blocked Origin:", origin);
+        callback(new Error("Not allowed by CORS"));
+      }
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
     allowedHeaders: ["Content-Type", "Authorization"],
